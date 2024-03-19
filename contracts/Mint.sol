@@ -15,8 +15,7 @@ contract TokenMinter is AccessControl, ReentrancyGuard {
     IMyToken public token;
 
     uint256 public constant MAX_SUPPLY = 1000000 * 10 ** 18;
-    uint256 public constant RATE_SMALL = 1000000 * 10 ** 18;
-    uint256 public constant RATE_LARGE = 1000 * 10 ** 18;
+    uint256 public constant MATIC_TO_MYTOKEN_RATE = 1000000;
 
     constructor(address tokenAddress) {
         require(tokenAddress != address(0), "Token address cannot be zero");
@@ -26,30 +25,14 @@ contract TokenMinter is AccessControl, ReentrancyGuard {
         _grantRole(ADMIN_ROLE, msg.sender);
     }
 
-    function mintSmall(address to) public payable nonReentrant {
+    function mintMyToken(address to) public payable nonReentrant {
+        uint256 maticAmount = msg.value;
+        uint256 tokenAmount = maticAmount * MATIC_TO_MYTOKEN_RATE;
         require(
-            msg.value == 0.000001 ether,
-            "Incorrect payment amount for small mint."
-        );
-        uint256 amount = RATE_SMALL;
-        require(
-            token.totalSupply() + amount <= MAX_SUPPLY,
+            token.totalSupply() + tokenAmount <= MAX_SUPPLY,
             "Minting would exceed max supply"
         );
-        token.mint(to, amount);
-    }
-
-    function mintLarge(address to) public payable nonReentrant {
-        require(
-            msg.value == 1 ether,
-            "Incorrect payment amount for large mint."
-        );
-        uint256 amount = RATE_LARGE;
-        require(
-            token.totalSupply() + amount <= MAX_SUPPLY,
-            "Minting would exceed max supply"
-        );
-        token.mint(to, amount);
+        token.mint(to, tokenAmount);
     }
 
     function withdraw() public onlyRole(ADMIN_ROLE) nonReentrant {
