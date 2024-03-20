@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 interface IMyToken {
     function mint(address to, uint256 amount) external;
@@ -10,7 +11,7 @@ interface IMyToken {
     function totalSupply() external view returns (uint256);
 }
 
-contract TokenMinter is AccessControl, ReentrancyGuard {
+contract TokenMinter is AccessControl, ReentrancyGuard, Pausable {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     IMyToken public token;
 
@@ -25,17 +26,28 @@ contract TokenMinter is AccessControl, ReentrancyGuard {
         _grantRole(ADMIN_ROLE, msg.sender);
     }
 
-    function mintMyToken(address to) public payable nonReentrant {
-        uint256 maticAmount = msg.value;
-        uint256 tokenAmount = maticAmount * MATIC_TO_MYTOKEN_RATE;
-        require(
-            token.totalSupply() + tokenAmount <= MAX_SUPPLY,
-            "Minting would exceed max supply"
-        );
-        token.mint(to, tokenAmount);
+    function pause() external onlyRole(ADMIN_ROLE) {
+        _pause();
     }
 
-    function withdraw() public onlyRole(ADMIN_ROLE) nonReentrant {
+    function unpause() external onlyRole(ADMIN_ROLE) {
+        _unpause();
+    }
+
+    function mintToken(address to) external payable nonReentrant whenNotPaused {
+        uint256 tokenAmount = msg.value * MATIC_TO_MYTOKEN_RATE;
+        _mintToken(to, tokenAmount);
+    }
+
+    function _mintToken(address to, uint256 amount) private {
+        require(
+            token.totalSupply() + amount <= MAX_SUPPLY,
+            "Minting would exceed max supply"
+        );
+        token.mint(to, amount);
+    }
+
+    function withdraw() external onlyRole(ADMIN_ROLE) nonReentrant {
         uint256 balance = address(this).balance;
         require(balance > 0, "No funds to withdraw");
         (bool sent, ) = msg.sender.call{value: balance}("");
