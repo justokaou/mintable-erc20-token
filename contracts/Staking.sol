@@ -14,7 +14,7 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
     struct Stake {
         uint256 amount;
         uint256 since;
-        uint256 rewards;
+        uint256 pendingRewards;
         uint256 rewardPerTokenPaid;
     }
 
@@ -22,8 +22,9 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
 
     uint256 public lastRewardTime;
     uint public dailyEmissionsRate = 1000 * 1e18;
-    uint256 public rewardPerTokenStored;
+    uint256 public bigRewardPerTokenStored;
     uint256 public totalTokenStaked;
+    uint256 internal bigMultiplier = 1e18;
 
     IERC20 internal stakingToken;
     IERC20 internal rewardToken;
@@ -37,6 +38,8 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
+
+        updateBigRewardsPerToken();
     }
 
     // Modifiers
@@ -61,16 +64,22 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
             "amount exceeds balance"
         );
 
-        stakes[msg.sender] = Stake({
-            amount: _amount,
-            since: block.timestamp,
-            rewards: 0,
-            rewardPerTokenPaid: 0
-        });
-
         totalTokenStaked += _amount;
 
         stakingToken.transferFrom(msg.sender, address(this), _amount);
+
+        if (isUserStaker(msg.sender)) {
+            _getRewards();
+            stakes[msg.sender].amount += _amount;
+        } else {
+            stakes[msg.sender] = Stake({
+                amount: _amount,
+                since: block.timestamp,
+                pendingRewards: 0,
+                rewardPerTokenPaid: 0
+            });
+        }
+
         emit Staked(msg.sender, _amount);
     }
 
@@ -88,6 +97,7 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
         totalTokenStaked -= _amount;
 
         stakingToken.transfer(msg.sender, _amount);
+        _getRewards();
 
         emit Withdrawn(msg.sender, _amount);
     }
@@ -95,23 +105,19 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
     // Rewards
 
     function getRewards() external nonReentrant whenNotPaused {
-        getRewardsInternal();
+        _getRewards();
     }
 
-    function getRewardsInternal() internal {
-        updateRewardsPerToken();
-        uint rewardsToSend = userPendingRewards(msg.sender);
+    function _getRewards() internal {
+        uint256 rewardsToSend = updateAddressRewardsBalance(msg.sender);
 
         require(
-            rewardsToSend <=
-                rewardToken.balanceOf(address(this)) - totalTokenStaked,
+            rewardToken.balanceOf(address(this)) - totalTokenStaked > 0,
             "Not enough tokens for reward"
         );
 
         if (rewardsToSend > 0) {
-            stakes[msg.sender].rewards = 0;
-            stakes[msg.sender].rewardPerTokenPaid = rewardPerTokenStored;
-            stakingToken.transfer(msg.sender, rewardsToSend);
+            rewardToken.transfer(msg.sender, rewardsToSend);
             emit RewardPaid(msg.sender, rewardsToSend);
         }
     }
@@ -119,30 +125,34 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
     function updateAddressRewardsBalance(
         address _address
     ) internal returns (uint) {
-        updateRewardsPerToken();
+        updateBigRewardsPerToken();
         uint pendingRewards = userPendingRewards(_address);
+        stakes[_address].rewardPerTokenPaid = bigRewardPerTokenStored;
         return pendingRewards;
     }
 
-    function userPendingRewards(
-        address _address
-    ) public view returns (uint256) {
-        Stake storage userStake = stakes[_address];
-        uint256 totalReward = rewardPerToken();
-        uint256 earnedReward = ((totalReward - userStake.rewardPerTokenPaid) *
-            userStake.amount) / 1e18;
-        return earnedReward + userStake.rewards;
-    }
-
-    function updateRewardsPerToken() public {
-        if (timeSinceLastReward() > 0 && totalTokenStaked != 0) {
+    function updateBigRewardsPerToken() public {
+        if (timeSinceLastReward() > 0) {
             uint rewardSeconds = timeSinceLastReward();
             lastRewardTime = block.timestamp;
             uint emissionsPerSecond = dailyEmissionsRate / 86400;
-            uint newEmissionsToAdd = emissionsPerSecond * rewardSeconds * 1e18;
-            uint newRewardsPerToken = (newEmissionsToAdd / totalTokenStaked) /
-                1e18;
-            rewardPerTokenStored += newRewardsPerToken;
+            uint newEmissionsToAdd = emissionsPerSecond * rewardSeconds;
+            uint newBigRewardsPerToken = ((newEmissionsToAdd * bigMultiplier) /
+                totalTokenStaked);
+            bigRewardPerTokenStored += newBigRewardsPerToken;
+        }
+    }
+
+    function userPendingRewards(address _address) public view returns (uint) {
+        uint earnedBigRewardPerToken = bigRewardPerTokenStored -
+            stakes[_address].rewardPerTokenPaid;
+        if (earnedBigRewardPerToken > 0) {
+            uint rewardsToSend = (earnedBigRewardPerToken *
+                stakes[_address].amount) / bigMultiplier;
+
+            return rewardsToSend;
+        } else {
+            return 0;
         }
     }
 
@@ -152,21 +162,12 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
         return block.timestamp - lastRewardTime;
     }
 
-    function rewardPerToken() internal view returns (uint256) {
-        if (totalTokenStaked == 0) {
-            return rewardPerTokenStored;
-        }
-
-        uint256 ratePerSecond = dailyEmissionsRate / 86400;
-
-        return
-            rewardPerTokenStored +
-            (((block.timestamp - lastRewardTime) * ratePerSecond) /
-                totalTokenStaked);
-    }
-
     function rewardsBalance() external view returns (uint256) {
         return rewardToken.balanceOf(address(this)) - totalTokenStaked;
+    }
+
+    function isUserStaker(address _address) public view returns (bool) {
+        return stakes[_address].amount > 0;
     }
 
     // ADMIN
@@ -190,6 +191,10 @@ contract Staking is ReentrancyGuard, AccessControl, Pausable {
     }
 
     function withdrawRewards(uint256 _amount) external onlyRole(ADMIN_ROLE) {
-        rewardToken.transferFrom(msg.sender, address(this), _amount);
+        require(
+            _amount <= rewardToken.balanceOf(address(this)) - totalTokenStaked,
+            "Not enough tokens for reward"
+        );
+        rewardToken.transfer(msg.sender, _amount);
     }
 }
