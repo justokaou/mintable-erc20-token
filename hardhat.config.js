@@ -2,18 +2,18 @@ require("@nomicfoundation/hardhat-toolbox");
 const dotenv = require("dotenv");
 dotenv.config();
 
-const pk = process.env.pk;
+const pk = process.env.PRIVATE_KEY;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: "0.8.20",
   networks: {
     mumbai: {
-      url: `https://polygon-mumbai-bor-rpc.publicnode.com`,
+      url: process.env.RPC_URL,
       accounts: [pk],
     },
   },
   etherscan: {
-    apiKey: process.env.scanApi,
+    apiKey: process.env.ETHERSCAN_API_KEY,
   },
 };

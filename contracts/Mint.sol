@@ -16,7 +16,7 @@ contract TokenMinter is AccessControl, ReentrancyGuard, Pausable {
     IMyToken public token;
 
     uint256 public constant MAX_SUPPLY = 1000000 * 10 ** 18;
-    uint256 public constant MATIC_TO_MYTOKEN_RATE = 1000000;
+    uint256 public constant ETHER_TO_MYTOKEN_RATE = 1000000;
 
     constructor(address tokenAddress) {
         require(tokenAddress != address(0), "Token address cannot be zero");
@@ -35,7 +35,7 @@ contract TokenMinter is AccessControl, ReentrancyGuard, Pausable {
     }
 
     function mintToken(address to) external payable nonReentrant whenNotPaused {
-        uint256 tokenAmount = msg.value * MATIC_TO_MYTOKEN_RATE;
+        uint256 tokenAmount = msg.value * ETHER_TO_MYTOKEN_RATE;
         _mintToken(to, tokenAmount);
     }
 
