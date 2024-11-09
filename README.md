@@ -20,6 +20,7 @@ To run this project, you will need to add the following environment variables to
 `ETHERSCAN_API_KEY="YOUR_ETHERSCAN_API_KEY"`
 
 `STAKING_TOKEN_ADDR="YOUR_STAKING_TOKEN_ADDRESS"`
+
 `REWARD_TOKEN_ADDR="YOUR_REWARD_TOKEN_ADDRESS"`
 
 ## Installation
