@@ -59,6 +59,10 @@ For example :
   npx hardhat verify --network mumbai 0xMyStakingContract "TOKEN_ADDR" "REWARD_TOKEN_ADDR"
 ```
 
+## 🛡️ License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+
 ## Authors
 
 - **JustOkaou** - [GitHub Profile](https://github.com/justokaou)
